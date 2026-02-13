@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import Header from '@/components/header';
 import InputBox from '@/components/inputbox';
+import Bookmarks from '@/components/Bookmarks';
 
 export default function Home() {
   return (
@@ -13,6 +14,8 @@ export default function Home() {
 
         {/* Add Bookmark Card */}
         <InputBox />
+
+        <Bookmarks />
 
       </div>
     </main>
