@@ -102,11 +102,11 @@ export default function LoginPage() {
   const [, startTransition] = useTransition();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fix 1: Derive error directly from URL — no setState inside useEffect
+
   const errorKey = searchParams.get("error");
   const errorMsg = errorKey ? (AUTH_ERRORS[errorKey] ?? AUTH_ERRORS.Default) : null;
 
-  // Fix 2: Wrap redirect in startTransition — prevents cascading render warning
+  
   useEffect(() => {
     if (status === "authenticated") {
       startTransition(() => {

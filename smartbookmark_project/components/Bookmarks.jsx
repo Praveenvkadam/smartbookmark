@@ -119,16 +119,15 @@ export default function Bookmarks() {
         (payload) => {
           const id = (payload.new?.id ?? payload.old?.id)?.toString()
 
-          // Skip if this mutation was initiated locally (already handled optimistically)
+          
           if (localMutations.has(id)) {
             localMutations.delete(id)
             return
           }
 
-          // Handle changes from OTHER sessions / devices
+         
           if (payload.eventType === "INSERT") {
             setBookmarks((prev) => {
-              // Guard against duplicates
               if (prev.some((b) => b.id === payload.new.id)) return prev
               return [payload.new, ...prev]
             })
@@ -203,7 +202,7 @@ export default function Bookmarks() {
     }
   }
 
-  // Delete bookmark
+  
   async function handleDelete(id) {
     const previous = bookmarks.find((b) => b.id === id)
 
@@ -215,8 +214,6 @@ export default function Bookmarks() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-
-      // Mark so real-time DELETE event for this ID is skipped
       localMutations.add(id?.toString())
       toast.success(data.message || "Bookmark deleted successfully", {
         icon: <Trash2 className="h-4 w-4" />,
@@ -254,7 +251,6 @@ export default function Bookmarks() {
         </div>
 
 
-        {/* Search Input */}
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
           <Input
@@ -378,7 +374,6 @@ export default function Bookmarks() {
                     </div>
                   </div>
 
-                  {/* Mobile Actions */}
                   <div className="mt-4 flex gap-2 sm:hidden pt-4 border-t border-[#e5e3df]">
                     <Button
                       size="sm"
@@ -459,7 +454,6 @@ export default function Bookmarks() {
           </Card>
         )}
 
-        {/* Edit Dialog */}
         <Dialog open={!!editing} onOpenChange={() => setEditing(null)}>
           <DialogContent className="sm:max-w-[500px] border-[#e5e3df] bg-white">
             <DialogHeader>

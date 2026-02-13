@@ -62,7 +62,7 @@ export default function InputBox() {
     try {
       const newBookmark = await promise
 
-      // Notify the Bookmarks component to prepend this bookmark immediately
+      
       window.dispatchEvent(
         new CustomEvent("bookmark:created", { detail: newBookmark })
       )
@@ -90,7 +90,7 @@ export default function InputBox() {
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Title Field */}
+              
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-[#1a1a1a]">
                     Title
@@ -107,7 +107,7 @@ export default function InputBox() {
                   )}
                 </div>
 
-                {/* URL Field */}
+              
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-[#1a1a1a]">
                     URL

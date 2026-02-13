@@ -18,7 +18,7 @@ export default function Home() {
         fontFamily: "'Geist', 'Inter', sans-serif",
       }}
     >
-      {/* ── Single Box containing all 3 components ── */}
+      
       <section
         style={{
           width: "100%",
