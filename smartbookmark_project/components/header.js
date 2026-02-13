@@ -2,10 +2,12 @@
 
 import { useSession, signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
-import { Bookmark, LogOut } from "lucide-react"
+import { Bookmark, LogOut, LogIn } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 export default function Header() {
   const { data: session } = useSession()
+  const router = useRouter()
 
   return (
     <div className="w-full flex justify-center pt-6">
@@ -33,16 +35,25 @@ export default function Header() {
           </div>
         </div>
 
-        <Button
-          variant="ghost"
-          onClick={() =>
-            signOut({ callbackUrl: "/signup" })
-          }
-          className="flex items-center gap-2"
-        >
-          <LogOut size={18} />
-          Sign out
-        </Button>
+        {session?.user ? (
+          <Button
+            variant="ghost"
+            onClick={() => signOut({ callbackUrl: "/signup" })}
+            className="flex items-center gap-2"
+          >
+            <LogOut size={18} />
+            Sign out
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            onClick={() => router.push("/signup")}
+            className="flex items-center gap-2"
+          >
+            <LogIn size={18} />
+            Login
+          </Button>
+        )}
       </div>
     </div>
   )
