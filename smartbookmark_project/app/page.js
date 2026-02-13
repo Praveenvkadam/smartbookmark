@@ -1,23 +1,41 @@
 "use client";
-import Link from 'next/link';
-import Header from '@/components/header';
-import InputBox from '@/components/inputbox';
-import Bookmarks from '@/components/Bookmarks';
+
+import Link from "next/link";
+import Header from "@/components/header";
+import InputBox from "@/components/inputbox";
+import Bookmarks from "@/components/Bookmarks";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-neutral-100 py-10">
-      <div className="max-w-5xl mx-auto px-6 space-y-8">
-        
-        {/* Header Card */}
+    <main
+      style={{
+        minHeight: "100vh",
+        backgroundColor: "#f5f3ef",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "2rem 1rem",
+        fontFamily: "'Geist', 'Inter', sans-serif",
+      }}
+    >
+      {/* ── Single Box containing all 3 components ── */}
+      <section
+        style={{
+          width: "100%",
+          maxWidth: "760px",
+          backgroundColor: "#ffffff",
+          borderRadius: "16px",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+          padding: "2rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "2rem",
+        }}
+      >
         <Header />
-
-        {/* Add Bookmark Card */}
         <InputBox />
-
         <Bookmarks />
-
-      </div>
+      </section>
     </main>
   );
 }

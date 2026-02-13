@@ -95,10 +95,7 @@ export default function Bookmarks() {
     return () => window.removeEventListener("bookmark:created", handleBookmarkCreated)
   }, [])
 
-  // Real-time subscription
-  // FIXED: Only handle events that weren't triggered by the current user's
-  // own mutations (those are handled optimistically below). We use a ref-tracked
-  // "locally mutated IDs" set so the real-time handler skips duplicates.
+  
   const localMutations = useCallback(() => {
     const pending = new Set()
     return {
@@ -165,7 +162,7 @@ export default function Bookmarks() {
     }
   }, [userId])
 
-  // Add new bookmark
+  
   async function handleAddBookmark(e) {
     e.preventDefault()
 
@@ -174,7 +171,7 @@ export default function Bookmarks() {
       return
     }
 
-    // Optimistic insert with a temporary ID
+  
     const tempId = `temp-${Date.now()}`
     const optimisticEntry = {
       id: tempId,
@@ -200,8 +197,7 @@ export default function Bookmarks() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
-      // Replace the temp entry with the real one from the server.
-      // Also mark the real ID so the real-time INSERT event is ignored.
+     
       localMutations.add(data.id?.toString())
       setBookmarks((prev) =>
         prev.map((b) => (b.id === tempId ? { ...optimisticEntry, ...data } : b))
@@ -210,23 +206,19 @@ export default function Bookmarks() {
         icon: <Sparkles className="h-4 w-4" />,
       })
     } catch (err) {
-      // Roll back the optimistic insert on failure
       setBookmarks((prev) => prev.filter((b) => b.id !== tempId))
       toast.error(err.message || "Failed to add bookmark")
     }
   }
 
-  // Update bookmark
   async function handleUpdate() {
     if (!editing.title.trim() || !editing.url.trim()) {
       toast.error("Title and URL are required")
       return
     }
 
-    // Snapshot for rollback
     const previous = bookmarks.find((b) => b.id === editing.id)
 
-    // Optimistic update
     setBookmarks((prev) =>
       prev.map((b) => (b.id === editing.id ? { ...b, ...editing } : b))
     )
@@ -246,13 +238,11 @@ export default function Bookmarks() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
-      // Mark so real-time UPDATE event for this ID is skipped
       localMutations.add(editing.id?.toString())
       toast.success(data.message || "Bookmark updated successfully", {
         icon: <Check className="h-4 w-4" />,
       })
     } catch (err) {
-      // Roll back on failure
       if (previous) {
         setBookmarks((prev) =>
           prev.map((b) => (b.id === previous.id ? previous : b))
@@ -264,10 +254,8 @@ export default function Bookmarks() {
 
   // Delete bookmark
   async function handleDelete(id) {
-    // Snapshot for rollback
     const previous = bookmarks.find((b) => b.id === id)
 
-    // Optimistic delete
     setBookmarks((prev) => prev.filter((b) => b.id !== id))
 
     try {
@@ -283,7 +271,7 @@ export default function Bookmarks() {
         icon: <Trash2 className="h-4 w-4" />,
       })
     } catch (err) {
-      // Roll back on failure
+
       if (previous) {
         setBookmarks((prev) =>
           [...prev, previous].sort(
@@ -295,7 +283,7 @@ export default function Bookmarks() {
     }
   }
 
-  // Pagination
+
   const totalPages = Math.ceil(bookmarks.length / ITEMS_PER_PAGE)
   const paginatedBookmarks = bookmarks.slice(
     (page - 1) * ITEMS_PER_PAGE,
@@ -303,10 +291,10 @@ export default function Bookmarks() {
   )
 
   return (
-    <div className="w-full min-h-screen bg-[#faf9f7] pt-10 pb-20">
+    <div className="w-full min-h-screen bg-white border border-[#e5e3df] rounded-2xl shadow-lg pt-10 pb-20">
       <div className="w-[95%] max-w-6xl mx-auto space-y-6">
         
-        {/* Header with Add Button */}
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-[#1a1a1a]">My Bookmarks</h1>
@@ -324,7 +312,7 @@ export default function Bookmarks() {
           </Button>
         </div>
 
-        {/* Add Bookmark Form */}
+       
         {showAddForm && (
           <Card className="rounded-2xl border-[#2d5f4f] border-2 shadow-lg bg-white animate-in slide-in-from-top duration-300">
             <CardContent className="p-6">
@@ -423,7 +411,7 @@ export default function Bookmarks() {
           </div>
         )}
 
-        {/* Empty State */}
+       
         {!loading && paginatedBookmarks.length === 0 && (
           <Card className="rounded-2xl border-[#e5e3df] shadow-sm">
             <CardContent className="p-12 text-center">
@@ -451,7 +439,7 @@ export default function Bookmarks() {
           </Card>
         )}
 
-        {/* Bookmark List */}
+        
         {!loading && paginatedBookmarks.length > 0 && (
           <div className="space-y-4">
             {paginatedBookmarks.map((bookmark, index) => (
@@ -590,7 +578,9 @@ export default function Bookmarks() {
 
         {/* Stats Card */}
         {!loading && bookmarks.length > 0 && (
-          <Card className="rounded-2xl border-[#e5e3df] shadow-sm bg-gradient-to-r from-white to-[#faf9f7]">
+          <Card className="rounded-2xl border-[#e5e3df] shadow-sm bg-gradient-to-r from-white to-[#faf9f7] 
+          animate-in fade-in duration-500 overflow-y-auto"
+          >
             <CardContent className="p-6 text-center">
               <p className="text-sm text-gray-600">
                 You have{" "}
@@ -600,7 +590,7 @@ export default function Bookmarks() {
                 {bookmarks.length === 1 ? "bookmark" : "bookmarks"} saved
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                🔄 Real-time sync enabled
+                Real-time sync enabled
               </p>
             </CardContent>
           </Card>
