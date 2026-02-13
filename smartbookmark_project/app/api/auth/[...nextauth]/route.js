@@ -14,7 +14,7 @@ const handler = NextAuth({
   callbacks: {
     async signIn({ user, account, profile }) {
       try {
-        // Check if user exists
+        
         const { data: existingUser } = await supabase
           .from('users')
           .select('*')
@@ -22,7 +22,7 @@ const handler = NextAuth({
           .single()
 
         if (!existingUser) {
-          // Create new user
+         
           await supabase.from('users').insert({
             email: user.email,
             name: user.name,
@@ -34,7 +34,7 @@ const handler = NextAuth({
             created_at: new Date().toISOString(),
           })
         } else {
-          // Update existing user
+          
           await supabase
             .from('users')
             .update({
@@ -55,7 +55,7 @@ const handler = NextAuth({
     },
     
     async session({ session, token }) {
-      // Add user ID from database to session if needed
+     
       if (session.user) {
         const { data } = await supabase
           .from('users')
