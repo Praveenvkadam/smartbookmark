@@ -3,14 +3,13 @@
 import { useEffect, useState, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
-import { 
-  Search, 
-  ExternalLink, 
-  Trash2, 
-  Edit, 
-  ChevronLeft, 
+import {
+  Search,
+  ExternalLink,
+  Trash2,
+  Edit,
+  ChevronLeft,
   ChevronRight,
-  Plus,
   Sparkles,
   X,
   Check
@@ -27,7 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
-// Initialize Supabase client for real-time
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -42,12 +41,11 @@ export default function Bookmarks() {
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [newBookmark, setNewBookmark] = useState({ title: "", url: "" })
+
 
   const userId = session?.user?.id
 
-  // Fetch bookmarks
+
   async function fetchBookmarks() {
     if (!userId) return
     setLoading(true)
@@ -67,27 +65,27 @@ export default function Bookmarks() {
     }
   }
 
-  // Initial fetch
+
   useEffect(() => {
     fetchBookmarks()
   }, [userId, search])
 
-  // Listen for bookmarks added from the InputBox component on the same page
+
+
   useEffect(() => {
     function handleBookmarkCreated(e) {
       const newBookmark = e.detail
       if (!newBookmark) return
 
-      // Mark this ID so the Supabase real-time INSERT event is ignored (already handled here)
       localMutations.add(newBookmark.id?.toString())
 
       setBookmarks((prev) => {
-        // Guard against duplicates
+
         if (prev.some((b) => b.id === newBookmark.id)) return prev
         return [newBookmark, ...prev]
       })
 
-      // Reset to page 1 so the new bookmark is visible at the top
+
       setPage(1)
     }
 
@@ -95,7 +93,7 @@ export default function Bookmarks() {
     return () => window.removeEventListener("bookmark:created", handleBookmarkCreated)
   }, [])
 
-  
+
   const localMutations = useCallback(() => {
     const pending = new Set()
     return {
@@ -162,54 +160,7 @@ export default function Bookmarks() {
     }
   }, [userId])
 
-  
-  async function handleAddBookmark(e) {
-    e.preventDefault()
 
-    if (!newBookmark.title.trim() || !newBookmark.url.trim()) {
-      toast.error("Title and URL are required")
-      return
-    }
-
-  
-    const tempId = `temp-${Date.now()}`
-    const optimisticEntry = {
-      id: tempId,
-      title: newBookmark.title,
-      url: newBookmark.url,
-      user_id: userId,
-      created_at: new Date().toISOString(),
-    }
-    setBookmarks((prev) => [optimisticEntry, ...prev])
-    setNewBookmark({ title: "", url: "" })
-    setShowAddForm(false)
-
-    try {
-      const res = await fetch("/api/bookmarks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: optimisticEntry.title,
-          url: optimisticEntry.url,
-          userId,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-
-     
-      localMutations.add(data.id?.toString())
-      setBookmarks((prev) =>
-        prev.map((b) => (b.id === tempId ? { ...optimisticEntry, ...data } : b))
-      )
-      toast.success("Bookmark added successfully!", {
-        icon: <Sparkles className="h-4 w-4" />,
-      })
-    } catch (err) {
-      setBookmarks((prev) => prev.filter((b) => b.id !== tempId))
-      toast.error(err.message || "Failed to add bookmark")
-    }
-  }
 
   async function handleUpdate() {
     if (!editing.title.trim() || !editing.url.trim()) {
@@ -293,101 +244,15 @@ export default function Bookmarks() {
   return (
     <div className="w-full min-h-screen bg-white border border-[#e5e3df] rounded-2xl shadow-lg pt-10 pb-20">
       <div className="w-[95%] max-w-6xl mx-auto space-y-6">
-        
 
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-[#1a1a1a]">My Bookmarks</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Real-time synchronized across all devices
-            </p>
-          </div>
-          
-          <Button
-            onClick={() => setShowAddForm(true)}
-            className="bg-[#2d5f4f] hover:bg-[#234a3d] text-white shadow-md"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Bookmark
-          </Button>
+
+        <div>
+          <h1 className="text-3xl font-bold text-[#1a1a1a]">My Bookmarks</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Real-time synchronized across all devices
+          </p>
         </div>
 
-       
-        {showAddForm && (
-          <Card className="rounded-2xl border-[#2d5f4f] border-2 shadow-lg bg-white animate-in slide-in-from-top duration-300">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-[#d4af37]" />
-                  <h2 className="text-xl font-semibold text-[#1a1a1a]">
-                    Add New Bookmark
-                  </h2>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowAddForm(false)}
-                  className="hover:bg-[#faf9f7]"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <form onSubmit={handleAddBookmark} className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-[#1a1a1a]">
-                      Title
-                    </label>
-                    <Input
-                      value={newBookmark.title}
-                      onChange={(e) =>
-                        setNewBookmark({ ...newBookmark, title: e.target.value })
-                      }
-                      placeholder="My awesome article"
-                      className="border-[#e5e3df] focus-visible:ring-[#2d5f4f] focus-visible:border-[#2d5f4f]"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-[#1a1a1a]">
-                      URL
-                    </label>
-                    <Input
-                      type="url"
-                      value={newBookmark.url}
-                      onChange={(e) =>
-                        setNewBookmark({ ...newBookmark, url: e.target.value })
-                      }
-                      placeholder="https://example.com"
-                      className="border-[#e5e3df] focus-visible:ring-[#2d5f4f] focus-visible:border-[#2d5f4f]"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    type="submit"
-                    className="flex-1 bg-[#2d5f4f] hover:bg-[#234a3d] text-white"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Bookmark
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowAddForm(false)}
-                    className="border-[#e5e3df] hover:bg-[#faf9f7]"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Search Input */}
         <div className="relative">
@@ -403,7 +268,7 @@ export default function Bookmarks() {
           />
         </div>
 
-        {/* Loading State */}
+
         {loading && (
           <div className="text-center py-12">
             <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-[#2d5f4f] border-r-transparent"></div>
@@ -411,7 +276,7 @@ export default function Bookmarks() {
           </div>
         )}
 
-       
+
         {!loading && paginatedBookmarks.length === 0 && (
           <Card className="rounded-2xl border-[#e5e3df] shadow-sm">
             <CardContent className="p-12 text-center">
@@ -421,25 +286,16 @@ export default function Bookmarks() {
               <h3 className="text-lg font-semibold text-[#1a1a1a] mb-2">
                 {search ? "No bookmarks found" : "No bookmarks yet"}
               </h3>
-              <p className="text-gray-500 mb-4">
-                {search 
-                  ? "Try adjusting your search" 
-                  : "Click 'Add Bookmark' to get started"}
+              <p className="text-gray-500">
+                {search
+                  ? "Try adjusting your search"
+                  : "Use the input box above to add your first bookmark"}
               </p>
-              {!search && (
-                <Button
-                  onClick={() => setShowAddForm(true)}
-                  className="bg-[#2d5f4f] hover:bg-[#234a3d] text-white"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Your First Bookmark
-                </Button>
-              )}
             </CardContent>
           </Card>
         )}
 
-        
+
         {!loading && paginatedBookmarks.length > 0 && (
           <div className="space-y-4">
             {paginatedBookmarks.map((bookmark, index) => (
@@ -450,7 +306,7 @@ export default function Bookmarks() {
               >
                 <CardContent className="p-6">
                   <div className="flex justify-between items-start gap-4">
-                    {/* Left side */}
+
                     <div className="flex-1 min-w-0 space-y-2">
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#2d5f4f] to-[#8b7355] flex items-center justify-center flex-shrink-0 shadow-md">
@@ -458,7 +314,7 @@ export default function Bookmarks() {
                             {bookmark.title.charAt(0).toUpperCase()}
                           </span>
                         </div>
-                        
+
                         <div className="flex-1 min-w-0">
                           <h2 className="text-lg font-semibold text-[#1a1a1a] group-hover:text-[#2d5f4f] transition-colors">
                             {bookmark.title}
@@ -471,7 +327,17 @@ export default function Bookmarks() {
                             className="inline-flex items-center gap-1.5 text-sm text-[#8b7355] hover:text-[#2d5f4f] hover:underline transition-colors mt-1"
                           >
                             <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
-                            <span className="truncate">{bookmark.url}</span>
+                            <span className="truncate">
+                              {(() => {
+                                try {
+                                  const u = new URL(bookmark.url);
+                                  const display = u.hostname + u.pathname.replace(/\/$/, '') + u.search;
+                                  return display.length > 40 ? display.slice(0, 40) + '…' : display;
+                                } catch {
+                                  return bookmark.url.length > 40 ? bookmark.url.slice(0, 40) + '…' : bookmark.url;
+                                }
+                              })()}
+                            </span>
                           </a>
 
                           <p className="text-xs text-gray-500 mt-2">
@@ -485,7 +351,6 @@ export default function Bookmarks() {
                       </div>
                     </div>
 
-                    {/* Right side - Desktop Actions */}
                     <div className="hidden sm:flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                       <Button
                         size="sm"
@@ -545,7 +410,7 @@ export default function Bookmarks() {
           </div>
         )}
 
-        {/* Pagination */}
+
         {!loading && bookmarks.length > ITEMS_PER_PAGE && (
           <div className="flex justify-center items-center gap-4 py-4">
             <Button
@@ -576,7 +441,7 @@ export default function Bookmarks() {
           </div>
         )}
 
-        {/* Stats Card */}
+
         {!loading && bookmarks.length > 0 && (
           <Card className="rounded-2xl border-[#e5e3df] shadow-sm bg-gradient-to-r from-white to-[#faf9f7] 
           animate-in fade-in duration-500 overflow-y-auto"
@@ -589,9 +454,7 @@ export default function Bookmarks() {
                 </span>{" "}
                 {bookmarks.length === 1 ? "bookmark" : "bookmarks"} saved
               </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Real-time sync enabled
-              </p>
+
             </CardContent>
           </Card>
         )}
