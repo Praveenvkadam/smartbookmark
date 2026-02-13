@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, Suspense } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -95,7 +95,7 @@ function AlertCircleIcon() {
   );
 }
 
-export default function LoginPage() {
+function LoginPageInner() {
   const { status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -106,7 +106,7 @@ export default function LoginPage() {
   const errorKey = searchParams.get("error");
   const errorMsg = errorKey ? (AUTH_ERRORS[errorKey] ?? AUTH_ERRORS.Default) : null;
 
-  
+
   useEffect(() => {
     if (status === "authenticated") {
       startTransition(() => {
@@ -138,7 +138,7 @@ export default function LoginPage() {
 
       <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#f8f6f0] via-[#eeeade] to-[#f5f3ee] px-4">
 
-      
+
         <div className="absolute left-8 top-7 flex items-center gap-2.5">
           <div className="h-6 w-1 rounded-full bg-[#b89a3e]" />
           <span className="font-serif text-lg font-bold tracking-tight text-foreground">
@@ -146,7 +146,7 @@ export default function LoginPage() {
           </span>
         </div>
 
-      
+
         <div className="fade-up-1 relative mb-7">
           <span className="pulse-ring pointer-events-none absolute inset-[-10px] rounded-[26px] border-2 border-[rgba(74,93,58,0.3)]" />
           <span className="pulse-ring2 pointer-events-none absolute inset-[-10px] rounded-[26px] border-2 border-[rgba(74,93,58,0.18)]" />
@@ -162,7 +162,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-       
+
         <div className="fade-up-2 mb-8 text-center">
           <h1 className="mb-2 font-serif text-[42px] font-extrabold tracking-tight text-foreground">
             Smart Bookmark
@@ -172,7 +172,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-       
+
         <div className="fade-up-3 w-full max-w-[420px]">
           <Card className="border border-white/80 bg-white/85 shadow-xl backdrop-blur-md">
             <CardHeader className="pb-4">
@@ -221,5 +221,19 @@ export default function LoginPage() {
         <p className="fade-up-3 mt-6 text-xs text-muted-foreground">Thank you for visiting</p>
       </div>
     </>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#f8f6f0]">
+          <LoaderIcon />
+        </div>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   );
 }
