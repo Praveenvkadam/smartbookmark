@@ -72,6 +72,29 @@ export default function Bookmarks() {
     fetchBookmarks()
   }, [userId, search])
 
+  // Listen for bookmarks added from the InputBox component on the same page
+  useEffect(() => {
+    function handleBookmarkCreated(e) {
+      const newBookmark = e.detail
+      if (!newBookmark) return
+
+      // Mark this ID so the Supabase real-time INSERT event is ignored (already handled here)
+      localMutations.add(newBookmark.id?.toString())
+
+      setBookmarks((prev) => {
+        // Guard against duplicates
+        if (prev.some((b) => b.id === newBookmark.id)) return prev
+        return [newBookmark, ...prev]
+      })
+
+      // Reset to page 1 so the new bookmark is visible at the top
+      setPage(1)
+    }
+
+    window.addEventListener("bookmark:created", handleBookmarkCreated)
+    return () => window.removeEventListener("bookmark:created", handleBookmarkCreated)
+  }, [])
+
   // Real-time subscription
   // FIXED: Only handle events that weren't triggered by the current user's
   // own mutations (those are handled optimistically below). We use a ref-tracked

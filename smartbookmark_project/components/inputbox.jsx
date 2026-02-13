@@ -60,7 +60,13 @@ export default function InputBox() {
     })
 
     try {
-      await promise
+      const newBookmark = await promise
+
+      // Notify the Bookmarks component to prepend this bookmark immediately
+      window.dispatchEvent(
+        new CustomEvent("bookmark:created", { detail: newBookmark })
+      )
+
       reset()
     } catch {}
   }
