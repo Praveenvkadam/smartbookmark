@@ -1,8 +1,21 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
+import { 
+  Search, 
+  ExternalLink, 
+  Trash2, 
+  Edit, 
+  ChevronLeft, 
+  ChevronRight,
+  Plus,
+  Sparkles,
+  X,
+  Check
+} from "lucide-react"
+import { createClient } from "@supabase/supabase-js"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -14,35 +27,38 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
+// Initialize Supabase client for real-time
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
 const ITEMS_PER_PAGE = 5
 
 export default function Bookmarks() {
   const { data: session } = useSession()
-
-
   const [bookmarks, setBookmarks] = useState([])
   const [search, setSearch] = useState("")
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newBookmark, setNewBookmark] = useState({ title: "", url: "" })
 
   const userId = session?.user?.id
 
-
+  // Fetch bookmarks
   async function fetchBookmarks() {
     if (!userId) return
-
     setLoading(true)
 
     try {
       const res = await fetch(
         `/api/bookmarks?userId=${userId}&search=${search}`
       )
-
       const data = await res.json()
 
       if (!res.ok) throw new Error(data.error)
-
       setBookmarks(data)
     } catch (err) {
       toast.error(err.message || "Failed to fetch bookmarks")
@@ -51,221 +67,583 @@ export default function Bookmarks() {
     }
   }
 
-  /* Fetch whenever user or search changes */
+  // Initial fetch
   useEffect(() => {
     fetchBookmarks()
   }, [userId, search])
 
+  // Real-time subscription
+  // FIXED: Only handle events that weren't triggered by the current user's
+  // own mutations (those are handled optimistically below). We use a ref-tracked
+  // "locally mutated IDs" set so the real-time handler skips duplicates.
+  const localMutations = useCallback(() => {
+    const pending = new Set()
+    return {
+      add: (id) => pending.add(id),
+      has: (id) => pending.has(id),
+      delete: (id) => pending.delete(id),
+    }
+  }, [])()
 
-  async function handleDelete(id) {
-    const promise = fetch(
-      `/api/bookmarks?id=${id}&userId=${userId}`,
-      { method: "DELETE" }
-    ).then(async (res) => {
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      return data
-    })
+  useEffect(() => {
+    if (!userId) return
 
-    toast.promise(promise, {
-      loading: "Deleting bookmark...",
-      success: "Bookmark deleted successfully",
-      error: (err) => err.message,
-    })
+    const channel = supabase
+      .channel("bookmarks-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "bookmarks",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const id = (payload.new?.id ?? payload.old?.id)?.toString()
+
+          // Skip if this mutation was initiated locally (already handled optimistically)
+          if (localMutations.has(id)) {
+            localMutations.delete(id)
+            return
+          }
+
+          // Handle changes from OTHER sessions / devices
+          if (payload.eventType === "INSERT") {
+            setBookmarks((prev) => {
+              // Guard against duplicates
+              if (prev.some((b) => b.id === payload.new.id)) return prev
+              return [payload.new, ...prev]
+            })
+            toast.success("New bookmark added!", {
+              description: payload.new.title,
+              icon: <Sparkles className="h-4 w-4" />,
+            })
+          } else if (payload.eventType === "UPDATE") {
+            setBookmarks((prev) =>
+              prev.map((b) => (b.id === payload.new.id ? payload.new : b))
+            )
+            toast.success("Bookmark updated!", {
+              icon: <Check className="h-4 w-4" />,
+            })
+          } else if (payload.eventType === "DELETE") {
+            setBookmarks((prev) =>
+              prev.filter((b) => b.id !== payload.old.id)
+            )
+            toast.success("Bookmark deleted!", {
+              icon: <Trash2 className="h-4 w-4" />,
+            })
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [userId])
+
+  // Add new bookmark
+  async function handleAddBookmark(e) {
+    e.preventDefault()
+
+    if (!newBookmark.title.trim() || !newBookmark.url.trim()) {
+      toast.error("Title and URL are required")
+      return
+    }
+
+    // Optimistic insert with a temporary ID
+    const tempId = `temp-${Date.now()}`
+    const optimisticEntry = {
+      id: tempId,
+      title: newBookmark.title,
+      url: newBookmark.url,
+      user_id: userId,
+      created_at: new Date().toISOString(),
+    }
+    setBookmarks((prev) => [optimisticEntry, ...prev])
+    setNewBookmark({ title: "", url: "" })
+    setShowAddForm(false)
 
     try {
-      await promise
-      fetchBookmarks()
-    } catch {}
+      const res = await fetch("/api/bookmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: optimisticEntry.title,
+          url: optimisticEntry.url,
+          userId,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      // Replace the temp entry with the real one from the server.
+      // Also mark the real ID so the real-time INSERT event is ignored.
+      localMutations.add(data.id?.toString())
+      setBookmarks((prev) =>
+        prev.map((b) => (b.id === tempId ? { ...optimisticEntry, ...data } : b))
+      )
+      toast.success("Bookmark added successfully!", {
+        icon: <Sparkles className="h-4 w-4" />,
+      })
+    } catch (err) {
+      // Roll back the optimistic insert on failure
+      setBookmarks((prev) => prev.filter((b) => b.id !== tempId))
+      toast.error(err.message || "Failed to add bookmark")
+    }
   }
 
+  // Update bookmark
   async function handleUpdate() {
-    const promise = fetch("/api/bookmarks", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: editing.id,
-        title: editing.title,
-        url: editing.url,
-        userId,
-      }),
-    }).then(async (res) => {
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      return data
-    })
+    if (!editing.title.trim() || !editing.url.trim()) {
+      toast.error("Title and URL are required")
+      return
+    }
 
-    toast.promise(promise, {
-      loading: "Updating bookmark...",
-      success: "Bookmark updated successfully",
-      error: (err) => err.message,
-    })
+    // Snapshot for rollback
+    const previous = bookmarks.find((b) => b.id === editing.id)
+
+    // Optimistic update
+    setBookmarks((prev) =>
+      prev.map((b) => (b.id === editing.id ? { ...b, ...editing } : b))
+    )
+    setEditing(null)
 
     try {
-      await promise
-      setEditing(null)
-      fetchBookmarks()
-    } catch {}
+      const res = await fetch("/api/bookmarks", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editing.id,
+          title: editing.title,
+          url: editing.url,
+          userId,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      // Mark so real-time UPDATE event for this ID is skipped
+      localMutations.add(editing.id?.toString())
+      toast.success(data.message || "Bookmark updated successfully", {
+        icon: <Check className="h-4 w-4" />,
+      })
+    } catch (err) {
+      // Roll back on failure
+      if (previous) {
+        setBookmarks((prev) =>
+          prev.map((b) => (b.id === previous.id ? previous : b))
+        )
+      }
+      toast.error(err.message || "Failed to update bookmark")
+    }
   }
 
-  /* =========================
-     PAGINATION LOGIC
-  ========================= */
-  const totalPages = Math.ceil(bookmarks.length / ITEMS_PER_PAGE)
+  // Delete bookmark
+  async function handleDelete(id) {
+    // Snapshot for rollback
+    const previous = bookmarks.find((b) => b.id === id)
 
+    // Optimistic delete
+    setBookmarks((prev) => prev.filter((b) => b.id !== id))
+
+    try {
+      const res = await fetch(`/api/bookmarks?id=${id}&userId=${userId}`, {
+        method: "DELETE",
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      // Mark so real-time DELETE event for this ID is skipped
+      localMutations.add(id?.toString())
+      toast.success(data.message || "Bookmark deleted successfully", {
+        icon: <Trash2 className="h-4 w-4" />,
+      })
+    } catch (err) {
+      // Roll back on failure
+      if (previous) {
+        setBookmarks((prev) =>
+          [...prev, previous].sort(
+            (a, b) => new Date(b.created_at) - new Date(a.created_at)
+          )
+        )
+      }
+      toast.error(err.message || "Failed to delete bookmark")
+    }
+  }
+
+  // Pagination
+  const totalPages = Math.ceil(bookmarks.length / ITEMS_PER_PAGE)
   const paginatedBookmarks = bookmarks.slice(
     (page - 1) * ITEMS_PER_PAGE,
     page * ITEMS_PER_PAGE
   )
 
   return (
-    <div className="w-full flex justify-center pt-10 pb-20 bg-gray-100 min-h-screen">
-      {/* Main container – SAME WIDTH as InputBox */}
-      <div className="w-[95%] max-w-6xl space-y-8">
+    <div className="w-full min-h-screen bg-[#faf9f7] pt-10 pb-20">
+      <div className="w-[95%] max-w-6xl mx-auto space-y-6">
+        
+        {/* Header with Add Button */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-[#1a1a1a]">My Bookmarks</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Real-time synchronized across all devices
+            </p>
+          </div>
+          
+          <Button
+            onClick={() => setShowAddForm(true)}
+            className="bg-[#2d5f4f] hover:bg-[#234a3d] text-white shadow-md"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Bookmark
+          </Button>
+        </div>
 
-        {/* =========================
-            SEARCH INPUT (BIGGER HEIGHT)
-        ========================= */}
-        <div className="w-full">
+        {/* Add Bookmark Form */}
+        {showAddForm && (
+          <Card className="rounded-2xl border-[#2d5f4f] border-2 shadow-lg bg-white animate-in slide-in-from-top duration-300">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-[#d4af37]" />
+                  <h2 className="text-xl font-semibold text-[#1a1a1a]">
+                    Add New Bookmark
+                  </h2>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAddForm(false)}
+                  className="hover:bg-[#faf9f7]"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <form onSubmit={handleAddBookmark} className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-[#1a1a1a]">
+                      Title
+                    </label>
+                    <Input
+                      value={newBookmark.title}
+                      onChange={(e) =>
+                        setNewBookmark({ ...newBookmark, title: e.target.value })
+                      }
+                      placeholder="My awesome article"
+                      className="border-[#e5e3df] focus-visible:ring-[#2d5f4f] focus-visible:border-[#2d5f4f]"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-[#1a1a1a]">
+                      URL
+                    </label>
+                    <Input
+                      type="url"
+                      value={newBookmark.url}
+                      onChange={(e) =>
+                        setNewBookmark({ ...newBookmark, url: e.target.value })
+                      }
+                      placeholder="https://example.com"
+                      className="border-[#e5e3df] focus-visible:ring-[#2d5f4f] focus-visible:border-[#2d5f4f]"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-[#2d5f4f] hover:bg-[#234a3d] text-white"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Bookmark
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddForm(false)}
+                    className="border-[#e5e3df] hover:bg-[#faf9f7]"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
           <Input
             placeholder="Search bookmarks..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value)
-              setPage(1) // reset to page 1 on search
+              setPage(1)
             }}
-            className="h-14 w-full bg-white text-base rounded-xl shadow-sm"
+            className="h-14 pl-12 bg-white border-[#e5e3df] rounded-xl shadow-sm text-base focus-visible:ring-[#2d5f4f] focus-visible:border-[#2d5f4f]"
           />
         </div>
 
-        {/* =========================
-            BOOKMARK LIST
-        ========================= */}
-        <div className="space-y-6">
-          {loading && (
-            <p className="text-center text-gray-500">
-              Loading...
-            </p>
-          )}
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-12">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-[#2d5f4f] border-r-transparent"></div>
+            <p className="mt-4 text-gray-500">Loading bookmarks...</p>
+          </div>
+        )}
 
-          {paginatedBookmarks.map((bookmark) => (
-            <Card
-              key={bookmark.id}
-              className="rounded-2xl shadow-sm bg-white"
+        {/* Empty State */}
+        {!loading && paginatedBookmarks.length === 0 && (
+          <Card className="rounded-2xl border-[#e5e3df] shadow-sm">
+            <CardContent className="p-12 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#faf9f7] flex items-center justify-center">
+                <Search className="h-8 w-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-[#1a1a1a] mb-2">
+                {search ? "No bookmarks found" : "No bookmarks yet"}
+              </h3>
+              <p className="text-gray-500 mb-4">
+                {search 
+                  ? "Try adjusting your search" 
+                  : "Click 'Add Bookmark' to get started"}
+              </p>
+              {!search && (
+                <Button
+                  onClick={() => setShowAddForm(true)}
+                  className="bg-[#2d5f4f] hover:bg-[#234a3d] text-white"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Your First Bookmark
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Bookmark List */}
+        {!loading && paginatedBookmarks.length > 0 && (
+          <div className="space-y-4">
+            {paginatedBookmarks.map((bookmark, index) => (
+              <Card
+                key={bookmark.id}
+                className="group rounded-2xl border-[#e5e3df] shadow-sm bg-white hover:shadow-lg hover:border-[#8b7355] transition-all duration-300 hover:-translate-y-1 animate-in slide-in-from-bottom duration-300"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start gap-4">
+                    {/* Left side */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#2d5f4f] to-[#8b7355] flex items-center justify-center flex-shrink-0 shadow-md">
+                          <span className="text-white text-lg font-bold">
+                            {bookmark.title.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <h2 className="text-lg font-semibold text-[#1a1a1a] group-hover:text-[#2d5f4f] transition-colors">
+                            {bookmark.title}
+                          </h2>
+
+                          <a
+                            href={bookmark.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-sm text-[#8b7355] hover:text-[#2d5f4f] hover:underline transition-colors mt-1"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span className="truncate">{bookmark.url}</span>
+                          </a>
+
+                          <p className="text-xs text-gray-500 mt-2">
+                            Added {new Date(bookmark.created_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right side - Desktop Actions */}
+                    <div className="hidden sm:flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditing(bookmark)}
+                        className="border-[#e5e3df] hover:bg-[#faf9f7] hover:border-[#8b7355] transition-all"
+                      >
+                        <Edit className="h-4 w-4 mr-1.5" />
+                        Edit
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => {
+                          if (confirm(`Delete "${bookmark.title}"?`)) {
+                            handleDelete(bookmark.id)
+                          }
+                        }}
+                        className="bg-[#b91c1c] hover:bg-[#991b1b] transition-all"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1.5" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Mobile Actions */}
+                  <div className="mt-4 flex gap-2 sm:hidden pt-4 border-t border-[#e5e3df]">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditing(bookmark)}
+                      className="flex-1 border-[#e5e3df] hover:bg-[#faf9f7]"
+                    >
+                      <Edit className="h-4 w-4 mr-1.5" />
+                      Edit
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        if (confirm(`Delete "${bookmark.title}"?`)) {
+                          handleDelete(bookmark.id)
+                        }
+                      }}
+                      className="flex-1 bg-[#b91c1c] hover:bg-[#991b1b]"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1.5" />
+                      Delete
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!loading && bookmarks.length > ITEMS_PER_PAGE && (
+          <div className="flex justify-center items-center gap-4 py-4">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === 1}
+              onClick={() => setPage(page - 1)}
+              className="border-[#e5e3df] hover:bg-[#faf9f7] disabled:opacity-50"
             >
-              <CardContent className="p-6 flex justify-between items-start">
-                {/* Left side (Title + URL) */}
-                <div className="space-y-2">
-                  <h2 className="text-lg font-semibold">
-                    {bookmark.title}
-                  </h2>
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Prev
+            </Button>
 
-                  <a
-                    href={bookmark.url}
-                    target="_blank"
-                    className="text-amber-600 text-sm"
-                  >
-                    {bookmark.url}
-                  </a>
-                </div>
+            <span className="text-sm text-gray-600 font-medium">
+              Page {page} of {totalPages}
+            </span>
 
-                {/* Right side (Actions) */}
-                <div className="flex gap-3">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setEditing(bookmark)}
-                  >
-                    Edit
-                  </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === totalPages}
+              onClick={() => setPage(page + 1)}
+              className="border-[#e5e3df] hover:bg-[#faf9f7] disabled:opacity-50"
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        )}
 
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => handleDelete(bookmark.id)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {/* Stats Card */}
+        {!loading && bookmarks.length > 0 && (
+          <Card className="rounded-2xl border-[#e5e3df] shadow-sm bg-gradient-to-r from-white to-[#faf9f7]">
+            <CardContent className="p-6 text-center">
+              <p className="text-sm text-gray-600">
+                You have{" "}
+                <span className="font-bold text-[#2d5f4f] text-lg">
+                  {bookmarks.length}
+                </span>{" "}
+                {bookmarks.length === 1 ? "bookmark" : "bookmarks"} saved
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                🔄 Real-time sync enabled
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* =========================
-            PAGINATION CONTROLS
-        ========================= */}
-        <div className="flex justify-center items-center gap-4">
-          <Button
-            variant="outline"
-            disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-          >
-            Prev
-          </Button>
-
-          <span className="text-sm text-gray-600">
-            Page {page} of {totalPages || 1}
-          </span>
-
-          <Button
-            variant="outline"
-            disabled={page === totalPages || totalPages === 0}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-          </Button>
-        </div>
-
-        {/* =========================
-            FOOTER COUNT
-        ========================= */}
-        <div className="bg-white rounded-2xl shadow-sm p-6 text-center text-gray-600">
-          You have {bookmarks.length} bookmarks saved
-        </div>
-
-        {/* =========================
-            EDIT DIALOG
-        ========================= */}
+        {/* Edit Dialog */}
         <Dialog open={!!editing} onOpenChange={() => setEditing(null)}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-[500px] border-[#e5e3df] bg-white">
             <DialogHeader>
-              <DialogTitle>Edit Bookmark</DialogTitle>
+              <DialogTitle className="text-xl text-[#1a1a1a] flex items-center gap-2">
+                <Edit className="h-5 w-5 text-[#2d5f4f]" />
+                Edit Bookmark
+              </DialogTitle>
             </DialogHeader>
 
             {editing && (
-              <div className="space-y-4">
-                <Input
-                  value={editing.title}
-                  onChange={(e) =>
-                    setEditing({
-                      ...editing,
-                      title: e.target.value,
-                    })
-                  }
-                />
+              <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-[#1a1a1a]">
+                    Title
+                  </label>
+                  <Input
+                    value={editing.title}
+                    onChange={(e) =>
+                      setEditing({ ...editing, title: e.target.value })
+                    }
+                    placeholder="Bookmark title"
+                    className="border-[#e5e3df] focus-visible:ring-[#2d5f4f] focus-visible:border-[#2d5f4f]"
+                  />
+                </div>
 
-                <Input
-                  value={editing.url}
-                  onChange={(e) =>
-                    setEditing({
-                      ...editing,
-                      url: e.target.value,
-                    })
-                  }
-                />
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-[#1a1a1a]">
+                    URL
+                  </label>
+                  <Input
+                    value={editing.url}
+                    onChange={(e) =>
+                      setEditing({ ...editing, url: e.target.value })
+                    }
+                    placeholder="https://example.com"
+                    className="border-[#e5e3df] focus-visible:ring-[#2d5f4f] focus-visible:border-[#2d5f4f]"
+                  />
+                </div>
 
-                <Button
-                  className="w-full"
-                  onClick={handleUpdate}
-                >
-                  Save Changes
-                </Button>
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    className="flex-1 bg-[#2d5f4f] hover:bg-[#234a3d] text-white"
+                    onClick={handleUpdate}
+                  >
+                    <Check className="h-4 w-4 mr-2" />
+                    Save Changes
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-[#e5e3df] hover:bg-[#faf9f7]"
+                    onClick={() => setEditing(null)}
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Cancel
+                  </Button>
+                </div>
               </div>
             )}
           </DialogContent>
         </Dialog>
-
       </div>
     </div>
   )

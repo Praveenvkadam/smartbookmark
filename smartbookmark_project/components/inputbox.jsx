@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
-  url: z.string().url("Enter a valid URL"),
+  url: z.string().url("Invalid URL format - must start with http:// or https://"),
 })
 
 export default function InputBox() {
@@ -28,10 +28,13 @@ export default function InputBox() {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(schema),
+    defaultValues: {
+      title: "",
+      url: "",
+    },
   })
 
   async function onSubmit(values) {
-   
     if (!session?.user?.id) {
       router.push("/signup")
       return
@@ -46,13 +49,13 @@ export default function InputBox() {
       }),
     }).then(async (res) => {
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed")
+      if (!res.ok) throw new Error(data.error || "Failed to add bookmark")
       return data
     })
 
     toast.promise(promise, {
       loading: "Adding bookmark...",
-      success: "Bookmark added successfully",
+      success: "Bookmark added successfully! 🎉",
       error: (err) => err.message,
     })
 
@@ -62,7 +65,6 @@ export default function InputBox() {
     } catch {}
   }
 
- 
   if (status === "unauthenticated") {
     router.push("/signup")
     return null
@@ -71,32 +73,46 @@ export default function InputBox() {
   return (
     <div className="w-full flex justify-center pt-10">
       <div className="w-[95%] max-w-6xl">
-        <Card className="w-full rounded-2xl shadow-sm border bg-white">
-          <CardHeader>
-            <CardTitle className="text-2xl font-semibold flex gap-2">
-              <span>✨</span>
+        <Card className="w-full rounded-2xl shadow-sm border-[#e5e3df] bg-white">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-2xl font-semibold flex items-center gap-2 text-[#1a1a1a]">
+              <span className="text-2xl">✨</span>
               Add New Bookmark
             </CardTitle>
           </CardHeader>
 
           <CardContent>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Title Field */}
                 <div className="space-y-2">
-                  <Label>Title</Label>
-                  <Input {...register("title")} className="h-12" />
+                  <Label className="text-sm font-medium text-[#1a1a1a]">
+                    Title
+                  </Label>
+                  <Input
+                    {...register("title")}
+                    placeholder="spotify"
+                    className="h-12 border-[#e5e3df] focus-visible:ring-[#2d5f4f] focus-visible:border-[#2d5f4f]"
+                  />
                   {errors.title && (
-                    <p className="text-sm text-red-500">
+                    <p className="text-sm text-red-600">
                       {errors.title.message}
                     </p>
                   )}
                 </div>
 
+                {/* URL Field */}
                 <div className="space-y-2">
-                  <Label>URL</Label>
-                  <Input {...register("url")} className="h-12" />
+                  <Label className="text-sm font-medium text-[#1a1a1a]">
+                    URL
+                  </Label>
+                  <Input
+                    {...register("url")}
+                    placeholder="https://open.spotify.com/"
+                    className="h-12 border-[#e5e3df] focus-visible:ring-[#2d5f4f] focus-visible:border-[#2d5f4f]"
+                  />
                   {errors.url && (
-                    <p className="text-sm text-red-500">
+                    <p className="text-sm text-red-600">
                       {errors.url.message}
                     </p>
                   )}
@@ -106,7 +122,7 @@ export default function InputBox() {
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="h-12 px-6 bg-emerald-700 hover:bg-emerald-800 text-white"
+                className="h-12 px-8 bg-[#2d5f4f] hover:bg-[#234a3d] text-white font-medium rounded-lg transition-all duration-200"
               >
                 {isSubmitting ? "Adding..." : "+ Add Bookmark"}
               </Button>
